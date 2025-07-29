@@ -2,6 +2,8 @@
 # Abaqus JOB test_1 COMPLETED
 import re
 import os
+import h5py
+import numpy as np
 
 def is_simulation_completed(filepath):
     success_keywords = [
@@ -187,18 +189,70 @@ def main(base_folder="test_data", log_file_path="process_log.txt"):
 
     return results
 
+
+def save_to_hdf5(results, output_path="meshgraph_dataset.h5"):
+    import h5py
+    import numpy as np
+
+    with h5py.File(output_path, "w") as h5f:
+        for variant, data in results.items():
+            nodes = data["inp_data"]["nodes"]
+            displacements = data["displacements"]
+            cload_val = float(data["inp_data"]["cloads"]) if data["inp_data"]["cloads"] else 0.0
+
+            node_features = []
+            node_labels = []
+
+            for node in nodes:
+                node_id, x, y, z = node
+                disp = displacements.get(node_id)
+                if disp and len(disp) >= 6:
+                    try:
+                        u = list(map(float, disp[:6]))  # U1–UR3
+                        applied_cload = 0.0 if node_id in [1, 6] else cload_val
+                        node_features.append([x, y, z, applied_cload])
+                        node_labels.append(u)
+                    except:
+                        continue
+
+            if node_features and node_labels:
+                node_features = np.array(node_features, dtype=np.float32)  # shape (N, 4)
+                node_labels = np.array(node_labels, dtype=np.float32)      # shape (N, 6)
+
+                grp = h5f.create_group(variant)
+                grp.create_dataset("node_features", data=node_features)
+                grp.create_dataset("displacements", data=node_labels)
+
+    print(f"HDF5 dataset saved at: {output_path}")
+    
+
+
 if __name__ == "__main__":
     
-    # base_folder = os.path.join("..", "test_data")  
-    results = main()
-    # print or save results as needed
-    print(len(results), "variants processed.")
-    for variant, data in results.items():
-        print(f"Variant: {variant}")
-        print(f"  Simulation Completed: {data['simulation_completed']}")
-        print(f"  Number of nodes: {len(data['inp_data']['nodes'])}")
-        print(f"  Number of elements: {len(data['inp_data']['elements'])}")
-        print(f"  Cload force values: {data['inp_data']['cloads']}")
-        print(f"  Number of displacement entries: {len(data['displacements'])}")
-        print()
+    base_folder = os.path.join("..", "test_data")  
+    results = main(base_folder)
+    save_to_hdf5(results)
+    # Print 1-2 sample variants to verify
+    max_print = 2
+    for i, (variant, data) in enumerate(results.items()):
+        if i >= max_print:
+            break
 
+        print(f"\n=== {variant} ===")
+        nodes = data["inp_data"]["nodes"]
+        displacements = data["displacements"]
+        cload_val = float(data["inp_data"]["cloads"]) if data["inp_data"]["cloads"] else 0.0
+
+        print(f"{'NodeID':>6} | {'x':>10} {'y':>10} {'z':>10} | {'cload':>10} || {'U1':>10} {'U2':>10} {'U3':>10} {'UR1':>10} {'UR2':>10} {'UR3':>10}")
+        print("-" * 100)
+
+        for node in nodes:
+            node_id, x, y, z = node
+            disp = displacements.get(node_id)
+            if disp:
+                try:
+                    u1, u2, u3, ur1, ur2, ur3 = map(float, disp[:6])
+                    applied_cload = 0.0 if node_id in [1, 6] else cload_val
+                    print(f"{node_id:6d} | {x:10.4f} {y:10.4f} {z:10.4f} | {applied_cload:10.2f} || {u1:10.5f} {u2:10.5f} {u3:10.5f} {ur1:10.5f} {ur2:10.5f} {ur3:10.5f}")
+                except:
+                    continue
