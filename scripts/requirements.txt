@@ -1,0 +1,54 @@
+# Core ML and Deep Learning
+torch==1.13.1
+torchvision==0.14.1
+torchaudio==0.13.1
+tensorflow==2.11.0
+torch-geometric==2.3.1
+
+# Graph Neural Networks
+dgl==2.0.0
+networkx==2.6.3
+
+# Data Processing and Scientific Computing
+numpy==1.21.6
+scipy==1.7.3
+pandas==1.3.5
+h5py==3.8.0
+scikit-learn==1.0.2
+
+# Visualization
+matplotlib==3.5.3
+pyvista==0.38.6
+vtk==9.3.1
+
+# Configuration Management
+hydra-core==1.3.2
+omegaconf==2.3.0
+PyYAML==6.0.1
+
+# Experiment Tracking
+wandb==0.18.7
+tensorboard==2.11.2
+
+# File Processing
+openpyxl==3.0.10
+
+# System and Utility
+psutil==7.0.0
+tqdm==4.67.1
+requests==2.31.0
+click==8.1.8
+
+# Development and Misc
+joblib==1.3.2
+Pillow==9.4.0
+packaging==24.0
+
+# NVIDIA Modulus (install from source if needed)
+# git+https://github.com/NVIDIA/modulus.git
+
+# Windows specific (uncomment if on Windows)
+# pywin32==308
+
+# Optional: APEX for optimized training (install from source)
+# git+https://github.com/NVIDIA/apex.git
