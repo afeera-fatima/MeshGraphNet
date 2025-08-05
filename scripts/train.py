@@ -31,13 +31,13 @@ except Exception:
     pass
 
 from datapipe.shell_dataset import ShellDataset, Hdf5Dataset
-from modulus.distributed.manager import DistributedManager
-from modulus.launch.logging import (
+from physicsnemo.distributed.manager import DistributedManager
+from physicsnemo.launch.logging import (
     PythonLogger,
     RankZeroLoggingWrapper,
 )
-from modulus.launch.logging.wandb import initialize_wandb
-from modulus.launch.utils import load_checkpoint, save_checkpoint
+from physicsnemo.launch.logging.wandb import initialize_wandb
+from physicsnemo.launch.utils import load_checkpoint, save_checkpoint
 # from modulus.models.meshgraphnet import MeshGraphNet
 from meshgraphnet import MeshGraphNet
 
@@ -268,8 +268,7 @@ class MGNTrainer:
             }
         )
 
-
-@hydra.main(version_base="1.3", config_path="conf/single_run_conf", config_name="config")
+@hydra.main(config_path="conf/single_run_conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     try:
         main_loss_fn = cfg["main_loss"]
@@ -312,6 +311,7 @@ def main(cfg: DictConfig) -> None:
 
         for i, graph in enumerate(trainer.dataloader):
             loss = trainer.train(graph)
+            print(f"Loss before detach: {loss.item()}") 
             loss = loss.detach().cpu().numpy()
             loss_agg += loss
             wandb.log({"graph_loss_per_epoch": loss})

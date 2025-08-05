@@ -98,65 +98,73 @@ def extract_displacements(file_path):
                         continue
     return displacements
 
-
 def save_to_hdf5(results, output_path="meshgraph_dataset_dgl.h5"):
+    import os
+
+    # Check if the file already exists
+    if os.path.exists(output_path):
+        print(f"⚠️ Warning: Overwriting existing file at {output_path}")
+
     with h5py.File(output_path, "w") as h5f:
         for variant, data in results.items():
-            nodes = data["inp_data"]["nodes"]
-            elements = data["inp_data"]["elements"]
-            displacements = data["displacements"]
-            cload_val = data["inp_data"].get("cloads", 0.0)
+            try:
+                nodes = data["inp_data"]["nodes"]
+                elements = data["inp_data"]["elements"]
+                displacements = data["displacements"]
+                cload_val = data["inp_data"].get("cloads", 0.0)
 
-            pos, spc, load, y = [], [], [], []
-            node_ids = []
+                pos, spc, load, y = [], [], [], []
+                node_ids = []
 
-            for node_id, x, y_, z in nodes:
-                u = displacements.get(node_id)
-                if not u or len(u) < 3:
+                for node_id, x, y_, z in nodes:
+                    u = displacements.get(node_id, [0.0, 0.0, 0.0])
+                
+
+                    pos.append([x, y_, z])
+                    spc.append([1.0, 1.0, 1.0] if node_id in [1, 6, 8] else [0.0, 0.0, 0.0])
+                    load.append([0.0, 0.0, cload_val] if node_id == 2 else [0.0, 0.0, 0.0])
+                    y.append(u[:3])
+                    node_ids.append(node_id)
+
+                if not pos:
+                    print(f"⚠️ Skipping variant {variant}: No valid nodes.")
                     continue
 
-                pos.append([x, y_, z])
-                spc.append([1.0, 1.0, 1.0] if node_id in [1, 6, 9] else [0.0, 0.0, 0.0])
-                load.append([0.0, 0.0, cload_val] if node_id == 2 else [0.0, 0.0, 0.0])
-                y.append(u[:3])
-                node_ids.append(node_id)
+                node_id_to_idx = {nid: i for i, nid in enumerate(node_ids)}
+                raw_edges = extract_edges_from_elements(elements)
+                edge_list = [
+                    [node_id_to_idx[a], node_id_to_idx[b]]
+                    for a, b in raw_edges.T
+                    if a in node_id_to_idx and b in node_id_to_idx
+                ]
 
-            if not pos:
-                continue
+                if not edge_list:
+                    print(f"⚠️ Skipping variant {variant}: No valid edges.")
+                    continue
 
-            node_id_to_idx = {nid: i for i, nid in enumerate(node_ids)}
-            raw_edges = extract_edges_from_elements(elements)
-            edge_list = [
-                [node_id_to_idx[a], node_id_to_idx[b]]
-                for a, b in raw_edges.T
-                if a in node_id_to_idx and b in node_id_to_idx
-            ]
+                edge_list = np.array(edge_list, dtype=np.int32)
+               
+                # ✅ Save as nested variant/case_000 structure
+                group = h5f.create_group(f"{variant}/case_000")
+                group.create_dataset("pos", data=np.array(pos, dtype=np.float32))
+                group.create_dataset("spc", data=np.array(spc, dtype=np.float32))
+                group.create_dataset("load", data=np.array(load, dtype=np.float32))
+                group.create_dataset("y", data=np.array(y, dtype=np.float32))
+                group.create_dataset("connectivity", data=edge_list)
+        
 
-            if not edge_list:
-                continue
+                print(f"✅ Saved variant: {variant}")
 
-            edge_list = np.array(edge_list, dtype=np.int32)
-            etypes = np.zeros(len(edge_list), dtype=np.float32)  # Dummy etype
-
-            # ✅ Save as nested variant/case_000 structure
-            group = h5f.create_group(f"{variant}/case_000")
-            group.create_dataset("pos", data=np.array(pos, dtype=np.float32))
-            group.create_dataset("spc", data=np.array(spc, dtype=np.float32))
-            group.create_dataset("load", data=np.array(load, dtype=np.float32))
-            group.create_dataset("y", data=np.array(y, dtype=np.float32))
-            group.create_dataset("connectivity", data=edge_list)
-            group.create_dataset("etypes", data=etypes)
+            except Exception as e:
+                print(f"❌ Error saving variant {variant}: {e}")
 
     print(f"✅ DGL-compatible dataset saved at: {output_path}")
 
-
-
-
 def print_variant_preview(variant, data):
     print(f"\n=== Preview: {variant} ===")
-    print(f"Node Features (9D): [x, y, z, spc_x, spc_y, spc_z, force_x, force_y, force_z]")
-    print(f"Edge Features (4D): [disp_diff_x, disp_diff_y, disp_diff_z]")
-    print(f"Labels (3D): [disp_x, disp_y, disp_z]")
+    print("Node Features (9D): [x, y, z, spc_x, spc_y, spc_z, force_x, force_y, force_z]")
+    print("Edge Features (4D): [disp_diff_x, disp_diff_y, disp_diff_z, norm]")
+    print("Labels (3D): [disp_x, disp_y, disp_z]")
     print("-" * 120)
 
     nodes = data["inp_data"]["nodes"]
@@ -166,28 +174,45 @@ def print_variant_preview(variant, data):
     print(f"{'NodeID':>6} | {'Node Features (11D)':>60} | {'Labels (3D)':>30}")
     print("-" * 120)
 
-    for i, (node_id, x, y, z) in enumerate(nodes[:9]):  # Show first 5 nodes
-        disp = displacements.get(node_id)
-        if disp and len(disp) >= 3:
-            # Node features
-            pos = [float(x), float(y), float(z)]
-            spc = [1.0, 1.0, 1.0] if node_id in [1, 6, 9] else [0.0, 0.0, 0.0]
-            force = [cload_val, 0.0, 0.0] if node_id == 2 else [0.0, 0.0, 0.0]
-            node_feat = pos  + spc + force
-            
-            # Labels
-            labels = disp[:3]
-            
-            node_feat_str = "[" + ", ".join(f"{f:6.3f}" for f in node_feat) + "]"
-            labels_str = f"[{labels[0]:8.3e}, {labels[1]:8.3e}, {labels[2]:8.3e}]"
-            
-            print(f"{node_id:6d} | {node_feat_str:>60} | {labels_str:>30}")
-    
+    # Display node features and labels
+    node_id_to_idx = {node_id: idx for idx, (node_id, _, _, _) in enumerate(nodes)}
+    for i, (node_id, x, y, z) in enumerate(nodes[:9]):  # Show first 9 nodes
+        disp = displacements.get(node_id, [0.0, 0.0, 0.0])
+        # Node features
+        pos = [float(x), float(y), float(z)]
+        spc = [1.0, 1.0, 1.0] if node_id in [1, 6, 9] else [0.0, 0.0, 0.0]
+        force = [cload_val, 0.0, 0.0] if node_id == 2 else [0.0, 0.0, 0.0]
+        node_feat = pos + spc + force
+
+        # Labels
+        labels = disp[:3]
+
+        node_feat_str = "[" + ", ".join(f"{f:6.3f}" for f in node_feat) + "]"
+        labels_str = f"[{labels[0]:8.3e}, {labels[1]:8.3e}, {labels[2]:8.3e}]"
+
+        print(f"{node_id:6d} | {node_feat_str:>60} | {labels_str:>30}")
+
     if len(nodes) > 9:
-        print(f"... and {len(nodes) - 5} more nodes")
+        print(f"... and {len(nodes) - 9} more nodes")
 
+    print("\nConnectivity (Edges):")
+    print(f"{'EdgeID':>6} | {'Source':>6} | {'Target':>6} | {'Edge Features (4D)':>50}")
+    print("-" * 90)
 
+    # Display connectivity (edges) and edge features
+    elements = data["inp_data"]["elements"]
+    raw_edges = extract_edges_from_elements(elements)
+    for i, (src, tgt) in enumerate(raw_edges.T[:9]):  # Show first 9 edges
+        src_disp = displacements.get(src, [0.0, 0.0, 0.0])
+        tgt_disp = displacements.get(tgt, [0.0, 0.0, 0.0])
+        disp_diff = [src_disp[j] - tgt_disp[j] for j in range(3)]
+        disp_norm = np.linalg.norm(disp_diff)
 
+        edge_feat_str = "[" + ", ".join(f"{f:6.3f}" for f in disp_diff) + f", {disp_norm:6.3f}]"
+        print(f"{i:6d} | {src:6d} | {tgt:6d} | {edge_feat_str:>50}")
+
+    if raw_edges.shape[1] > 9:
+        print(f"... and {raw_edges.shape[1] - 9} more edges")
 def main(base_folder="test_data", log_file_path="process_log.txt"):
     results = {}
     skipped = {}
@@ -235,14 +260,34 @@ def main(base_folder="test_data", log_file_path="process_log.txt"):
 
 if __name__ == "__main__":
 
-  
+    # file_path = "/home/sces201/Afeera/ML_Task/scripts/meshgraph_dataset_dgl.h5"
 
+    # with h5py.File(file_path, "r") as f:
+    #     def print_structure(name, obj):
+    #         if isinstance(obj, h5py.Group):
+    #             print(f"Group: {name}")
+    #         elif isinstance(obj, h5py.Dataset):
+    #             print(f"Dataset: {name}, Shape: {obj.shape}, Data Type: {obj.dtype}")
 
+    #     print("HDF5 File Structure:")
+    #     f.visititems(print_structure)
+
+    # exit(0)
 
     np.set_printoptions(precision=6, suppress=True)
     base_folder = os.path.join("..", "test_data")
 
     results = main(base_folder)
+
+    # print(f"Processed {len(results)} variants.")
+    # # print values of varients
+    # for variant, data in results.items():
+    #     print(f"\nVariant: {variant}")
+    #     inp_data = data["inp_data"]
+    #     displacements = data["displacements"]
+    #     print(f"Nodes: {len(inp_data['nodes'])}, Elements: {len(inp_data['elements'])}, Displacements: {len(displacements)}")
+    #     print(f"Clodads: {inp_data.get('cloads', 'N/A')}")
+
     save_to_hdf5(results)
 
     # print("\n📦 Saved variants in order (in meshgraph_dataset.h5):")
