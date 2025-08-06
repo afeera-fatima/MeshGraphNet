@@ -125,7 +125,7 @@ def create_vtk_from_graph(data_dict):
     faces = convert_egdes_to_trias(triangles)
     polydata = pv.PolyData(points, faces)
 
-    polydata["disp_x"], polydata["disp_y"], polydata["disp_z"] = [
+    polydata["disp_y"], polydata["disp_z"] = [
         data_dict["y"][:, i] for i in range(3)
     ]
     return polydata

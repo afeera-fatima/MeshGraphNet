@@ -32,14 +32,14 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import Callable, List, Tuple, Union
 
-import modulus  # noqa: F401 for docs
-from modulus.models.gnn_layers.mesh_edge_block import MeshEdgeBlock
-from modulus.models.gnn_layers.mesh_graph_mlp import MeshGraphMLP
-from modulus.models.gnn_layers.mesh_node_block import MeshNodeBlock
-from modulus.models.gnn_layers.utils import CuGraphCSC, set_checkpoint_fn
-from modulus.models.layers import get_activation
-from modulus.models.meta import ModelMetaData
-from modulus.models.module import Module
+import physicsnemo  # noqa: F401 for docs
+from physicsnemo.models.gnn_layers.mesh_edge_block import MeshEdgeBlock
+from physicsnemo.models.gnn_layers.mesh_graph_mlp import MeshGraphMLP
+from physicsnemo.models.gnn_layers.mesh_node_block import MeshNodeBlock
+from physicsnemo.models.gnn_layers.utils import CuGraphCSC, set_checkpoint_fn
+from physicsnemo.models.layers import get_activation
+from physicsnemo.models.meta import ModelMetaData
+from physicsnemo.models.module import Module
 
 
 @dataclass
@@ -168,15 +168,15 @@ class MeshGraphNet(Module):
             recompute_activation=recompute_activation,
         )
 
-        self.disp_x_decoder = MeshGraphMLP(
-            hidden_dim_processor,
-            output_dim=output_dim,
-            hidden_dim=hidden_dim_node_decoder,
-            hidden_layers=num_layers_node_decoder,
-            activation_fn=activation_fn,
-            norm_type=None,
-            recompute_activation=recompute_activation,
-        )
+        # self.disp_x_decoder = MeshGraphMLP(
+        #     hidden_dim_processor,
+        #     output_dim=output_dim,
+        #     hidden_dim=hidden_dim_node_decoder,
+        #     hidden_layers=num_layers_node_decoder,
+        #     activation_fn=activation_fn,
+        #     norm_type=None,
+        #     recompute_activation=recompute_activation,
+        # )
         self.disp_y_decoder = MeshGraphMLP(
             hidden_dim_processor,
             output_dim=output_dim,
@@ -219,11 +219,11 @@ class MeshGraphNet(Module):
         edge_features = self.edge_encoder(edge_features)
         node_features = self.node_encoder(node_features)
         shared_head = self.processor(node_features, edge_features, graph)
-        disp_x = torch.squeeze(self.disp_x_decoder(shared_head))
+        # disp_x = torch.squeeze(self.disp_x_decoder(shared_head))
         disp_y = torch.squeeze(self.disp_y_decoder(shared_head))
         disp_z = torch.squeeze(self.disp_z_decoder(shared_head))
         return torch.stack(
-            [disp_x, disp_y, disp_z], dim=-1
+            [disp_y, disp_z], dim=-1
         )
 
 

@@ -8,12 +8,28 @@ from typing import Any, List, Union
 import json
 
 def load_json(path):
+    def convert_to_tensor(obj):
+        if isinstance(obj, list):
+            return torch.tensor(obj, dtype=torch.float32)
+        if isinstance(obj, dict):
+            return {k: convert_to_tensor(v) for k, v in obj.items()}
+        return obj
+
     with open(path, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+    return convert_to_tensor(data)
 
 def save_json(obj, path):
+    def convert(o):
+        if isinstance(o,torch.Tensor):
+            if o.ndim == 0:
+                return o.item()
+            return o.tolist()
+        return o
+    
+    cleaned={k:convert(v) for k,v in obj.items()}
     with open(path, "w") as f:
-        json.dump(obj, f, indent=2)
+        json.dump(cleaned, f, indent=2)
 
 
 try:
@@ -52,7 +68,7 @@ class Hdf5Dataset:
     def __getitem__(self, id):
         data_file = self._get_file()
         variant, subcase = self.split_arr[id]
-        group = data_file[variant][subcase]
+        group = data_file[f"{variant}/{subcase}"]
         # Convert the h5py.Group into a dictionary
         data_point = {key: group[key][()] for key in group.keys()}
         return data_point
@@ -67,9 +83,9 @@ class ShellDataset(DGLDataset):
         split,
         dataset_split,
         num_samples=10,
-        invar_keys=["pos", "ntypes", "thickness", "spc", "load"],
-        outvar_keys=["disp_x", "disp_y", "disp_z"],
-        normalize_keys=["disp_x", "disp_y", "disp_z", "load", "thickness"],
+        invar_keys=["pos", "spc", "load"],
+        outvar_keys=["disp_y", "disp_z"],
+        normalize_keys=["disp_y", "disp_z", "load"],
         force_reload=False,
         name="dataset",
         verbose=False,
@@ -185,10 +201,10 @@ class ShellDataset(DGLDataset):
                 dim=-1,
             )
 
-            # Concat edge features
-            self.graphs[i].edata["x"] = torch.cat(
-                (self.graphs[i].edata["x"], self.etypes[i].view(-1, 1)), dim=-1
-            )
+            # # Concat edge features
+            # self.graphs[i].edata["x"] = torch.cat(
+            #     (self.graphs[i].edata["x"], self.etypes[i].view(-1, 1)), dim=-1
+            # )
 
     def max_abs_norm(self):
         for i in range(len(self.graphs)):
@@ -228,10 +244,11 @@ class ShellDataset(DGLDataset):
 
     def z_score_norm_edge(self):
         """normalizes a tensor"""
+        epsilon = torch.tensor(1e-8, dtype=torch.float32)
         for i in range(len(self.graphs)):
             self.graphs[i].edata["x"] = (
                 self.graphs[i].edata["x"] - self.edge_stats["edge_mean"]
-            ) / self.edge_stats["edge_std"]
+            ) / self.edge_stats["edge_std"] + epsilon
 
         return self.graphs
 
@@ -373,16 +390,18 @@ class ShellDataset(DGLDataset):
         return stats
 
     def _create_dgl_graph(self, data_i, to_bidirected=True, dtype=torch.int32):
+        
+        # print(f"connectivity shape:{data_i['connectivity'].shape}")
         edge_list = data_i["connectivity"].tolist()
         graph = dgl.graph(edge_list, idtype=dtype)
         if to_bidirected:
             graph = dgl.to_bidirected(graph)
 
         graph.ndata["pos"] = torch.tensor(data_i["pos"], dtype=torch.float32)
-        graph.ndata["ntypes"] = torch.tensor(data_i["ntypes"], dtype=torch.float32)
-        graph.ndata["thickness"] = torch.tensor(
-            data_i["thickness"], dtype=torch.float32
-        )
+        # graph.ndata["ntypes"] = torch.tensor(data_i["ntypes"], dtype=torch.float32)
+        # graph.ndata["thickness"] = torch.tensor(
+        #     data_i["thickness"], dtype=torch.float32
+        # )
         graph.ndata["spc"] = torch.tensor(data_i["spc"], dtype=torch.float32)
         graph.ndata["load"] = torch.tensor(data_i["load"], dtype=torch.float32)
 
@@ -394,14 +413,14 @@ class ShellDataset(DGLDataset):
         disp = torch.tensor(pos[row.long()] - pos[col.long()])
         disp_norm = torch.linalg.norm(disp, dim=-1, keepdim=True)
 
-        # Adjust etypes for bidirected graph
-        etypes = torch.tensor(data_i["etypes"], dtype=torch.float32)
-        if to_bidirected:
-            etypes = torch.cat(
-                [etypes, etypes]
-            )  # Duplicate etypes for bidirected edges
+        # # Adjust etypes for bidirected graph
+        # etypes = torch.tensor(data_i["etypes"], dtype=torch.float32)
+        # if to_bidirected:
+        #     etypes = torch.cat(
+        #         [etypes, etypes]
+        #     )  # Duplicate etypes for bidirected edges
 
-        self.etypes.append(etypes)
+        # self.etypes.append(etypes)
         graph.edata["x"] = torch.cat((disp, disp_norm), dim=-1)
 
         return graph

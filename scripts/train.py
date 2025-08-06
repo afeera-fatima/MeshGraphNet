@@ -211,7 +211,8 @@ class MGNTrainer:
 
     @torch.no_grad()
     def validation(self, metric):
-        error_keys = ["disp_x", "disp_y", "disp_z"]
+        # error_keys = ["disp_x", "disp_y", "disp_z"]
+        error_keys = ["disp_y", "disp_z"]
         errors = {key: 0 for key in error_keys}
         error_fn = getattr(utils, metric)
         for i, graph in enumerate(self.validation_dataloader):
@@ -250,8 +251,8 @@ class MGNTrainer:
                         self.validation_dataset.node_stats[f"{key}_min"],
                         self.validation_dataset.node_stats[f"{key}_max"],
                     )
-                print("Prediction range:", pred_val.min(), pred_val.max())
-                print("Target range:", target_val.min(), target_val.max())
+                # print("Prediction range:", pred_val.min(), pred_val.max())
+                # print("Target range:", target_val.min(), target_val.max())
                 errors[key] += error_fn(pred_val, target_val)
 
         for key in error_keys:
@@ -262,7 +263,7 @@ class MGNTrainer:
 
         wandb.log(
             {
-                f"{metric}_val_disp_x_error (%)": errors["disp_x"],
+                # f"{metric}_val_disp_x_error (%)": errors["disp_x"],
                 f"{metric}_val_disp_y_error (%)": errors["disp_y"],
                 f"{metric}_val_disp_z_error (%)": errors["disp_z"],
             }
@@ -288,8 +289,8 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     # initialize loggers
     initialize_wandb(
-        project="shell_mgn_multi_head_805",
-        entity="malaikanoor7864-mnsuam",
+        project="meshgnn",
+        entity="afeerafatima-university-of-engineering-and-technology-lahore",
         name=run_name,
         group="Test_run",
         mode=cfg.wandb_mode,
@@ -311,7 +312,7 @@ def main(cfg: DictConfig) -> None:
 
         for i, graph in enumerate(trainer.dataloader):
             loss = trainer.train(graph)
-            print(f"Loss before detach: {loss.item()}") 
+            # print(f"Loss before detach: {loss.item()}") 
             loss = loss.detach().cpu().numpy()
             loss_agg += loss
             wandb.log({"graph_loss_per_epoch": loss})

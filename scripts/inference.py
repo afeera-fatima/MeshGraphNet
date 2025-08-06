@@ -19,8 +19,8 @@ import os
 import hydra
 import torch
 from hydra.utils import to_absolute_path
-from modulus.launch.logging import PythonLogger
-from modulus.launch.utils import load_checkpoint
+from physicsnemo.launch.logging import PythonLogger
+from physicsnemo.launch.utils import load_checkpoint
 from meshgraphnet import MeshGraphNet
 from omegaconf import DictConfig
 
@@ -117,7 +117,7 @@ class MGNRollout:
             graph = graph.to(self.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
 
-            keys = ["disp_x", "disp_y", "disp_z"]
+            keys = ["disp_y", "disp_z"]
             ### read graph_data/ create polydata
             data_i = self.dataset.dataset_split[i]
             polydata = create_vtk_from_graph(data_i)
