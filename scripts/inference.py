@@ -53,7 +53,7 @@ class MGNRollout:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using {self.device} device")
 
-        test_idx = load_test_idx()
+        test_idx = load_test_idx("/home/sces201/Afeera/ML_Task/scripts/shell_mgn/low_precision_outputs/test_idx.pt")
 
         test_hdf5 = Hdf5Dataset(cfg.data_path, test_idx, len(test_idx))
         self.dataset = ShellDataset(
@@ -95,59 +95,165 @@ class MGNRollout:
             # epoch=48,  #### change to load ckpt of choice, or None for loading latest saved
         )
 
+    # def predict(self):
+    #     """
+    #     Run the prediction process.
+
+    #     Parameters:
+    #     -----------
+    #     save_results: bool
+    #         Whether to save the results in form of a .vtp file, by default False
+
+    #     Returns:
+    #     --------
+    #     None
+    #     """
+
+    #     self.pred, self.graphs = [], []
+    #     stats = {
+    #         key: value.to(self.device) for key, value in self.dataset.node_stats.items()
+    #     }
+    #     for i, graph in enumerate(self.dataloader):
+    #         graph = graph.to(self.device)
+    #         pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
+    #         pred = torch.cat([torch.zeros((pred.shape[0], 1), device=self.device), pred], dim=1)
+
+    #         keys = ["disp_x", "disp_y", "disp_z"]
+    #         ### read graph_data/ create polydata
+    #         data_i = self.dataset.dataset_split[i]
+    #         polydata = create_vtk_from_graph(data_i)
+    #         graph.ndata["y"] = torch.cat([graph.ndata["y"], torch.zeros((pred.shape[0], 1), device=self.device)], dim=1)
+    #         y_val = graph.ndata["y"].detach().cpu().numpy()
+    #         with torch.no_grad():
+    #             for key_index, key in enumerate(keys):
+    #                 pred_val = pred[:, key_index : key_index + 1]
+    #                 target_val = graph.ndata["y"][:, key_index : key_index + 1]
+
+    #                 if key == "disp_x":
+    #                     continue
+    #                 pred_val = self.dataset.z_score_denorm(
+    #                     pred_val, stats[f"{key}_mean"], stats[f"{key}_std"]
+    #                 )
+    #                 target_val = self.dataset.z_score_denorm(
+    #                     target_val, stats[f"{key}_mean"], stats[f"{key}_std"]
+    #                 )
+
+    #                 error = mse(pred_val, target_val)
+    #                 self.logger.info(
+    #                     f"Sample {i} - mse error of {key} (%): {error:.3f}"
+    #                 )
+
+    #                 polydata[f"pred_{key}"] = pred_val.detach().cpu().numpy()
+
+    #         print(polydata["pred_disp_y"], polydata["pred_disp_z"])
+    #         self.logger.info("-" * 50)
+    #         os.makedirs(to_absolute_path(self.results_dir), exist_ok=True)
+    #         polydata.save(
+    #             os.path.join(to_absolute_path(self.results_dir), f"shell_graph_{i}.vtp")
+    #         )
+
+
+#for ground truth
+
     def predict(self):
-        """
-        Run the prediction process.
-
-        Parameters:
-        -----------
-        save_results: bool
-            Whether to save the results in form of a .vtp file, by default False
-
-        Returns:
-        --------
-        None
-        """
-
+        # """
+        # Run the prediction process.
+        # """
         self.pred, self.graphs = [], []
-        stats = {
-            key: value.to(self.device) for key, value in self.dataset.node_stats.items()
-        }
+        stats = {key: value.to(self.device) for key, value in self.dataset.node_stats.items()}
+
         for i, graph in enumerate(self.dataloader):
             graph = graph.to(self.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
+            pred = torch.cat([torch.zeros((pred.shape[0], 1), device=self.device), pred], dim=1)
 
-            keys = ["disp_y", "disp_z"]
-            ### read graph_data/ create polydata
+            keys = ["disp_x", "disp_y", "disp_z"]
+
             data_i = self.dataset.dataset_split[i]
             polydata = create_vtk_from_graph(data_i)
+            
+            graph.ndata["y"] = torch.cat(
+                [graph.ndata["y"], torch.zeros((pred.shape[0], 1), device=self.device)],
+                dim=1
+            )
+            coordinates = torch.tensor(data_i["pos"], dtype=torch.float32, device=self.device)
+            coordinates = torch.cat(
+                [torch.zeros((pred.shape[0], 1), device=self.device), coordinates],
+                dim=1
+            )
+            denorm_preds = torch.zeros((3, 9), dtype=torch.float32, device=self.device)
             with torch.no_grad():
                 for key_index, key in enumerate(keys):
                     pred_val = pred[:, key_index : key_index + 1]
                     target_val = graph.ndata["y"][:, key_index : key_index + 1]
 
-                    pred_val = self.dataset.min_max_denorm(
-                        pred_val, stats[f"{key}_min"], stats[f"{key}_max"]
+                    if key == "disp_x":
+                        continue
+                    # Denormalize
+                    pred_val = self.dataset.z_score_denorm(
+                        pred_val, stats[f"{key}_mean"], stats[f"{key}_std"]
                     )
-                    target_val = self.dataset.min_max_denorm(
-                        target_val, stats[f"{key}_min"], stats[f"{key}_max"]
+                    target_val = self.dataset.z_score_denorm(
+                        target_val, stats[f"{key}_mean"], stats[f"{key}_std"]
                     )
-
+                    # Calculate MSE
                     error = mse(pred_val, target_val)
-                    self.logger.info(
-                        f"Sample {i} - mse error of {key} (%): {error:.3f}"
-                    )
+                    self.logger.info(f"Sample {i} - mse error of {key} (%): {error:.3f}")
 
+                    # Save both prediction & ground truth into polydata
                     polydata[f"pred_{key}"] = pred_val.detach().cpu().numpy()
-
+                    polydata[f"gt_{key}"] = target_val.detach().cpu().numpy()
+                    # coordinates[:, key_index-1] = pred_val.squeeze()
+                    # Print ALL values
+                    print(f"\nSample {i} - {key} predictions vs ground truth:")
+                    print("Pred:", pred_val.cpu().numpy().flatten())
+                    print("GT  :", target_val.cpu().numpy().flatten())
+                    
+                     # Store predicted value into the coordinates array
+                    denorm_preds[key_index] = pred_val.squeeze()    
+                            
+            # Convert final coordinates tensor to numpy
+            coordinates = coordinates.cpu().numpy()
+            denorm_preds = denorm_preds.cpu().numpy().T
+            displaced_coords = coordinates + denorm_preds
+            
             self.logger.info("-" * 50)
-            os.makedirs(to_absolute_path(self.results_dir), exist_ok=True)
-            polydata.save(
-                os.path.join(to_absolute_path(self.results_dir), f"shell_graph_{i}.vtp")
-            )
+            # Save .vtp file with predictions + ground truth
+            # save .inp file 
+        
+            self.write_inp_file(displaced_coords,coordinates ,to_absolute_path(f"/home/sces201/Afeera/ML_Task/scripts/shell_mgn/low_precision_results_inp_displaced_coords_{i}.inp"))
 
 
-@hydra.main(version_base="1.3", config_path="conf/single_run_conf", config_name="config")
+            # os.makedirs(to_absolute_path(self.results_dir), exist_ok=True)
+            # polydata.save(
+            #     os.path.join(to_absolute_path(self.results_dir), f"shell_graph_{i}.vtp")
+            # )
+
+    def write_inp_file(self, displaced_coords,coordinates, filename):
+        """
+        Write the displaced coordinates to a .inp file.
+
+        Parameters:
+        -----------
+        displaced_coords: numpy.ndarray
+            The displaced coordinates to write to the file.
+        filename: str
+            The name of the output .inp file.
+        """
+        with open(filename, 'w') as f:
+            f.write("*Node\n")
+            for i, coord in enumerate(displaced_coords):
+                f.write(f"{i + 1}, {coord[0]}, {coord[1]}, {coord[2]}\n")
+            f.write("*End Node\n")
+
+            f.write("*\n\n\n\nGROUND TRUTH\n")
+            for i, coord in enumerate(coordinates):
+                f.write(f"{i + 1}, {coord[0]}, {coord[1]}, {coord[2]}\n")
+            
+        self.logger.info(f"Displaced coordinates saved to {filename}")
+        
+
+@hydra.main(version_base="1.3", config_path="conf/single_run_conf", config_name="inference_conf")
 def main(cfg: DictConfig) -> None:
     logger = PythonLogger("main")  # General python logger
     logger.file_logging()

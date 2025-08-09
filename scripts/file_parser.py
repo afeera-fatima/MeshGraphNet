@@ -4,6 +4,8 @@ import h5py
 import numpy as np
 
 
+
+
 def is_simulation_completed(filepath):
     with open(filepath, 'r') as file:
         for line in file:
@@ -65,14 +67,15 @@ def parse_inp_file(filepath):
     return data
 
 
+
 def extract_edges_from_elements(elements_dict):
     edges = set()
     for conn in elements_dict.values():
         conn = list(conn)
         for i in range(len(conn)):
             a, b = conn[i], conn[(i + 1) % len(conn)]
-            edges.add((a, b))
-            edges.add((b, a))
+            s = tuple(sorted([a, b]))  # Corrected
+            edges.add(s)
     return np.array(list(edges), dtype=np.int64).T
 
 

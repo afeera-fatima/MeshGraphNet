@@ -278,7 +278,7 @@ def main(cfg: DictConfig) -> None:
     except:
         main_loss_fn = cfg["loss"]
         main_loss_module = loss_mapping[main_loss_fn]
-        run_name = f"805_relu_l1loss_min_max_0_1_loss_{main_loss_fn}_norm_{cfg.normalization}"
+        run_name = f"loss_{main_loss_fn}_norm_{cfg.normalization}"
     
     
     # initialize distributed manager
@@ -289,7 +289,7 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     # initialize loggers
     initialize_wandb(
-        project="meshgnn",
+        project="GNN-Training",
         entity="afeerafatima-university-of-engineering-and-technology-lahore",
         name=run_name,
         group="Test_run",

@@ -1,13 +1,13 @@
 hydra:
     run:
-        dir: ./shell_mgn/outputs
+        dir: ./shell_mgn/500_epoch_outputs
     job:
         chdir: True
 
-ckpt_path: ./shell_mgn/checkpoints
+ckpt_path: ./shell_mgn/500_epoch_checkpoints
 ckpt_name: ./shell.pt
-data_path: /home/sces201/Afeera/ML_Task/scripts/meshgraph_dataset_dgl.h5 # -> path to data file - hdf5
-results_dir: ./shell_mgn/results
+data_path: /home/sces201/Afeera/MeshGraphNet/scripts/meshgraph_dataset_dgl.h5  # -> path to data file - hdf5
+results_dir: ./shell_mgn/500_epoch_results
 
 input_dim_nodes: 6 # 2d pos , 2d spc 2d force
 input_dim_edges: 3 # 2d disp, 1d norm
@@ -22,8 +22,8 @@ invar_keys: ["pos", "spc", "load"]
 normalize_keys: ["disp_y", "disp_z", "load"]
 
 aggregation: "sum"
-batch_size: 1
-epochs: 50
+batch_size: 50
+epochs: 500
 
 num_training_samples: 1200
 num_validation_samples: 150

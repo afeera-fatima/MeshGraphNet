@@ -6,18 +6,19 @@ import torch
 import numpy as np
 from typing import Any, List, Union
 import json
+from physicsnemo.datapipes.gnn.utils import load_json
 
-def load_json(path):
-    def convert_to_tensor(obj):
-        if isinstance(obj, list):
-            return torch.tensor(obj, dtype=torch.float32)
-        if isinstance(obj, dict):
-            return {k: convert_to_tensor(v) for k, v in obj.items()}
-        return obj
+# def load_json(path):
+#     def convert_to_tensor(obj):
+#         if isinstance(obj, list):
+#             return torch.tensor(obj, dtype=torch.float32)
+#         if isinstance(obj, dict):
+#             return {k: convert_to_tensor(v) for k, v in obj.items()}
+#         return obj
 
-    with open(path, "r") as f:
-        data = json.load(f)
-    return convert_to_tensor(data)
+#     with open(path, "r") as f:
+#         data = json.load(f)
+#     return convert_to_tensor(data)
 
 def save_json(obj, path):
     def convert(o):

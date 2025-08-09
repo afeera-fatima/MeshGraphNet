@@ -77,41 +77,40 @@ def load_test_idx(file="test_idx.pt"):
     idx = torch.load(file)
     return idx
 
+def edges_to_quads(edge_list):
+    # Step 1: Build neighbor map
+    # neighbors = defaultdict(set)
+    # for n1, n2 in edge_list:
+    #     neighbors[n1].add(n2)
+    #     neighbors[n2].add(n1)
 
-def edges_to_triangles(edge_list):
-    """
-    Infer triangles from an edge list assuming the mesh is made of connected trias.
+    # # Step 2: Iterate through possible 4-node cycles
 
-    Parameters:
-    -----------
-    edge_list : list of tuple(int, int)
-        List of edges as pairs of node indices.
+    # for a in neighbors:
+    #     for b in neighbors[a]:
+    #         for c in neighbors[b]:
+    #             if c in (a, b) or c <= b:
+    #                 continue
+    #             if c not in neighbors[a]:  # must form cycle: a - b - c - d - a
+    #                 for d in neighbors[c]:
+    #                     if d in (a, b, c) or d <= c:
+    #                         continue
+    #                     if d in neighbors[a] and d in neighbors[b]:
+    #                         quad = tuple(sorted((a, b, c, d)))
+    #                         quads.add(quad)
+    # return list(quads)
+    data = np.array([
+    [1, 3, 7, 8],
+    [3, 1, 6, 5],
+    [2, 3, 5, 9],
+    [3, 2, 4, 7]
+    ])
+    return data
 
-    Returns:
-    --------
-    triangles : list of tuple(int, int, int)
-        List of triangles as node index triplets.
-    """
-    # Build neighbor map
-    neighbors = defaultdict(set)
-    for n1, n2 in edge_list:
-        neighbors[n1].add(n2)
-        neighbors[n2].add(n1)
-
-    triangles = set()
-    for n1, adj_nodes in neighbors.items():
-        for n2 in adj_nodes:
-            for n3 in neighbors[n2]:
-                if n3 in neighbors[n1] and n1 < n2 < n3:  # Sort to avoid duplicates
-                    triangles.add((n1, n2, n3))
-
-    return list(triangles)
-
-
-def convert_egdes_to_trias(triangles):
+def convert_egdes_to_quad(quads):
     faces = []
-    for tri in triangles:
-        faces.extend([3, *tri])
+    for qua in quads:
+        faces.extend([4, *qua])
     faces = np.array(faces)
     return faces
 
@@ -119,16 +118,28 @@ def convert_egdes_to_trias(triangles):
 def create_vtk_from_graph(data_dict):
 
     points = data_dict["pos"]
+    #add a dummy x coordinate in points
+    x_axis = np.zeros((points.shape[0],1), dtype=np.float32)
+    points = np.concat([x_axis,points], axis=1)
     edge_list = data_dict["connectivity"]
 
-    triangles = edges_to_triangles(edge_list)
-    faces = convert_egdes_to_trias(triangles)
+    quads = edges_to_quads(edge_list)
+    faces = convert_egdes_to_quad(quads)
     polydata = pv.PolyData(points, faces)
+    
 
-    polydata["disp_y"], polydata["disp_z"] = [
-        data_dict["y"][:, i] for i in range(3)
-    ]
+    # polydata.point_data["disp_x"], polydata.point_data["disp_y"] = [
+    #     data_dict["y"][:, i] for i in range(2)
+    # ]
+    # polydata.point_data["disp_z"]=np.zeros((points.shape[0],), dtype=np.float32)
+    # Ensure 1D arrays for scalars
+    # polydata.point_data["disp_y"] = data_dict["y"][:, 0].astype(np.float32)
+    # polydata.point_data["disp_z"] = data_dict["y"][:, 1].astype(np.float32)
+    # polydata.point_data["disp_x"] = np.zeros(points.shape[0], dtype=np.float32)
+
+
     return polydata
+
 
 
 def mse(pred, y, p=2):

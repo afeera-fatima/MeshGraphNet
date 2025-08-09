@@ -1,0 +1,40 @@
+hydra:
+    run:
+        dir: ./shell_mgn/low_precision_outputs
+    job:
+        chdir: True
+
+test_idx: /home/sces201/Afeera/ML_Task/scripts/shell_mgn/low_precision_outputs/test_idx.pt
+ckpt_path: ./shell_mgn/low_precision_checkpoints
+ckpt_name: ./shell.pt/
+data_path: /home/sces201/Afeera/ML_Task/scripts/meshgraph_dataset_dgl.h5 # -> path to hdf5
+results_dir: ./shell_mgn/low_precision_results
+
+input_dim_nodes: 6 # 3d pos, 1d ntype, 1d thickness, 3d spc 3d force | ndata -> pos(2d) ,markers 5 ; not sure
+input_dim_edges: 3 # 3d disp, 1d norm, 1d etypes | edata -> disp_vector(2d) , disp_norm
+output_dim: 1 # disp_x,y,z | u,v (velocities in x and y directions), p pressure
+hidden_dim_node_encoder: 256
+hidden_dim_edge_encoder: 256
+hidden_dim_node_decoder: 256
+
+aggregation: "sum"
+batch_size: 1
+epochs: 1000
+
+num_training_samples: 1200
+num_validation_samples: 150
+num_test_samples: 150
+
+lr: 1e-3
+lr_decay_rate: 0.99985
+
+amp: False
+jit: False
+wandb_mode: "online"
+
+
+loss:
+    MSELoss
+
+normalization:
+    z_score
