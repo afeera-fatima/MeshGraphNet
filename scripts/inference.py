@@ -53,7 +53,7 @@ class MGNRollout:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using {self.device} device")
 
-        test_idx = load_test_idx("/home/sces201/Afeera/ML_Task/scripts/shell_mgn/low_precision_outputs/test_idx.pt")
+        test_idx = load_test_idx(cfg.test_idx)
 
         test_hdf5 = Hdf5Dataset(cfg.data_path, test_idx, len(test_idx))
         self.dataset = ShellDataset(
@@ -159,9 +159,11 @@ class MGNRollout:
         # """
         # Run the prediction process.
         # """
-        self.pred, self.graphs = [], []
-        stats = {key: value.to(self.device) for key, value in self.dataset.node_stats.items()}
 
+        self.pred, self.graphs = [], []
+        stats = {key: value.to(self.device) for key, value in self.dataset.node_stats.items()} #stores mean standard deviation for each key
+
+       
         for i, graph in enumerate(self.dataloader):
             graph = graph.to(self.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
@@ -193,41 +195,30 @@ class MGNRollout:
                     pred_val = self.dataset.z_score_denorm(
                         pred_val, stats[f"{key}_mean"], stats[f"{key}_std"]
                     )
-                    target_val = self.dataset.z_score_denorm(
-                        target_val, stats[f"{key}_mean"], stats[f"{key}_std"]
-                    )
+                    # target_val = self.dataset.z_score_denorm(
+                    #     target_val, stats[f"{key}_mean"], stats[f"{key}_std"]
+                    # )
                     # Calculate MSE
                     error = mse(pred_val, target_val)
                     self.logger.info(f"Sample {i} - mse error of {key} (%): {error:.3f}")
 
-                    # Save both prediction & ground truth into polydata
+                    # # Save both prediction & ground truth into polydata
                     polydata[f"pred_{key}"] = pred_val.detach().cpu().numpy()
-                    polydata[f"gt_{key}"] = target_val.detach().cpu().numpy()
                     # coordinates[:, key_index-1] = pred_val.squeeze()
                     # Print ALL values
                     print(f"\nSample {i} - {key} predictions vs ground truth:")
                     print("Pred:", pred_val.cpu().numpy().flatten())
-                    print("GT  :", target_val.cpu().numpy().flatten())
                     
                      # Store predicted value into the coordinates array
                     denorm_preds[key_index] = pred_val.squeeze()    
                             
-            # Convert final coordinates tensor to numpy
-            coordinates = coordinates.cpu().numpy()
-            denorm_preds = denorm_preds.cpu().numpy().T
-            displaced_coords = coordinates + denorm_preds
-            
+      
             self.logger.info("-" * 50)
             # Save .vtp file with predictions + ground truth
-            # save .inp file 
-        
-            self.write_inp_file(displaced_coords,coordinates ,to_absolute_path(f"/home/sces201/Afeera/ML_Task/scripts/shell_mgn/low_precision_results_inp_displaced_coords_{i}.inp"))
-
-
-            # os.makedirs(to_absolute_path(self.results_dir), exist_ok=True)
-            # polydata.save(
-            #     os.path.join(to_absolute_path(self.results_dir), f"shell_graph_{i}.vtp")
-            # )
+            os.makedirs(to_absolute_path(self.results_dir), exist_ok=True)
+            polydata.save(
+                os.path.join(to_absolute_path(self.results_dir), f"shell_graph_{i}.vtp")
+            )
 
     def write_inp_file(self, displaced_coords,coordinates, filename):
         """

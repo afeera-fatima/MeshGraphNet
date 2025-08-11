@@ -115,31 +115,55 @@ def convert_egdes_to_quad(quads):
     return faces
 
 
-def create_vtk_from_graph(data_dict):
+# def create_vtk_from_graph(data_dict):
 
+#     points = data_dict["pos"]
+#     #add a dummy x coordinate in points
+#     x_axis = np.zeros((points.shape[0],1), dtype=np.float32)
+#     points = np.concat([x_axis,points], axis=1)
+#     edge_list = data_dict["connectivity"]
+
+#     quads = edges_to_quads(edge_list)
+#     faces = convert_egdes_to_quad(quads)
+#     polydata = pv.PolyData(points, faces)
+    
+
+#     # polydata.point_data["disp_y"], polydata.point_data["disp_z"] = [
+#     #     data_dict["y"][:, i] for i in range(2)
+#     # ]
+#     # polydata.point_data["disp_x"]=np.zeros((points.shape[0],), dtype=np.float32)
+#     # Ensure 1D arrays for scalars
+#     print(type(data_dict["y"][:, 0]))
+#     polydata["disp_y"] = data_dict["y"][:, 0].astype(np.float32)
+#     polydata["disp_z"] = data_dict["y"][:, 1].astype(np.float32)
+#     polydata["disp_x"] = np.zeros(points.shape[0], dtype=np.float32)
+
+
+#     return polydata
+
+def create_vtk_from_graph(data_dict):
     points = data_dict["pos"]
-    #add a dummy x coordinate in points
-    x_axis = np.zeros((points.shape[0],1), dtype=np.float32)
-    points = np.concat([x_axis,points], axis=1)
+
+    # If 2D coords: add X=0 to make it (X, Y, Z)
+    if points.shape[1] == 2:
+        points = np.hstack([np.zeros((points.shape[0], 1), dtype=np.float32),points])
+
     edge_list = data_dict["connectivity"]
 
     quads = edges_to_quads(edge_list)
-    faces = convert_egdes_to_quad(quads)
+    faces = convert_egdes_to_quad(quads)  # Ensure this matches quads format
     polydata = pv.PolyData(points, faces)
-    
 
-    # polydata.point_data["disp_x"], polydata.point_data["disp_y"] = [
-    #     data_dict["y"][:, i] for i in range(2)
-    # ]
-    # polydata.point_data["disp_z"]=np.zeros((points.shape[0],), dtype=np.float32)
-    # Ensure 1D arrays for scalars
-    # polydata.point_data["disp_y"] = data_dict["y"][:, 0].astype(np.float32)
-    # polydata.point_data["disp_z"] = data_dict["y"][:, 1].astype(np.float32)
-    # polydata.point_data["disp_x"] = np.zeros(points.shape[0], dtype=np.float32)
+    # Displacement fields
+    disp_y = data_dict["y"][:, 0].astype(np.float32)
+    disp_z = data_dict["y"][:, 1].astype(np.float32)
+    disp_x = np.zeros(points.shape[0], dtype=np.float32)
 
+    polydata["disp_x"] = disp_x
+    polydata["disp_y"] = disp_y
+    polydata["disp_z"] = disp_z
 
     return polydata
-
 
 
 def mse(pred, y, p=2):
