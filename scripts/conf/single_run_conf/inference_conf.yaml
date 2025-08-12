@@ -1,14 +1,14 @@
 hydra:
     run:
-        dir: ./shell_mgn/size1_50_epoch_outputs
+        dir: ./shell_mgn/size1_1000_epoch_outputs
     job:
         chdir: True
 
-test_idx: /home/sces201/Afeera/MeshGraphNet/scripts/shell_mgn/50_epoch_outputs/test_idx.pt
-ckpt_path: ./shell_mgn/size1_50_epoch_checkpoints
+test_idx: /home/sces201/Afeera/MeshGraphNet/scripts/shell_mgn/size1_1000_epoch_outputs/test_idx.pt
+ckpt_path: ./shell_mgn/size1_1000_epoch_checkpoints
 ckpt_name: ./shell.pt/
 data_path: /home/sces201/Afeera/MeshGraphNet/scripts/meshgraph_dataset_dgl.h5
-results_dir: ./shell_mgn/size1_50_epoch_results
+results_dir: ./shell_mgn/size1_1000_epoch_results
 
 input_dim_nodes: 6 # 3d pos, 1d ntype, 1d thickness, 3d spc 3d force | ndata -> pos(2d) ,markers 5 ; not sure
 input_dim_edges: 3 # 3d disp, 1d norm, 1d etypes | edata -> disp_vector(2d) , disp_norm

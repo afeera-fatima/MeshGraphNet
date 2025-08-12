@@ -187,7 +187,7 @@ class MGNRollout:
             with torch.no_grad():
                 for key_index, key in enumerate(keys):
                     pred_val = pred[:, key_index : key_index + 1]
-                    target_val = graph.ndata["y"][:, key_index : key_index + 1]
+                    target_val = graph.ndata["y"][:, key_index-1 : key_index]
 
                     if key == "disp_x":
                         continue

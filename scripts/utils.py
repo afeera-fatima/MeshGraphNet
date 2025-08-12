@@ -100,10 +100,10 @@ def edges_to_quads(edge_list):
     #                         quads.add(quad)
     # return list(quads)
     data = np.array([
-    [1, 3, 7, 8],
-    [3, 1, 6, 5],
-    [2, 3, 5, 9],
-    [3, 2, 4, 7]
+    [0, 2, 6, 7],
+    [2, 0, 5, 4],
+    [1, 2, 4, 8],
+    [2, 1, 3, 6]
     ])
     return data
 
