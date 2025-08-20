@@ -2,4 +2,5 @@ test_data
 shell_mgn
 __pycache__
 validation_models
-validation_h5_files
+Validation_h5_files
+.gitignore
