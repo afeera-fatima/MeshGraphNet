@@ -5,7 +5,7 @@
         "name": "Python: Run from child folder",
         "type": "python",
         "request": "launch",
-        "program": "${workspaceFolder}/scripts/inference.py",
+        "program": "${workspaceFolder}/scripts/train.py",
         "cwd": "${workspaceFolder}/scripts",
         "console": "integratedTerminal"
       }
