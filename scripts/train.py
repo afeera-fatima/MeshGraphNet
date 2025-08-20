@@ -289,7 +289,7 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     # initialize loggers
     initialize_wandb(
-        project="GNN-Training-BatchSize-1",
+        project="check",
         entity="afeerafatima-university-of-engineering-and-technology-lahore",
         name=run_name,
         group="Test_run",

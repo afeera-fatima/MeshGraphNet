@@ -38,12 +38,13 @@ def get_datapoint_idx(data_path):
                 all_idx.append((variant, subcase))
     return all_idx
 
+
 def generate_uniform_splits_for_subcases(idx, tr_samples, val_samples, test_samples):
     np.random.seed(42)
     train_idx = []
     val_idx = []
     test_idx = []
-    subcases = np.unique(np.array(idx)[:,-1])
+    subcases = np.unique(np.array(idx)[:, -1])
     sub_dict = {}
     for subcase in subcases:
         sub_dict[subcase] = []
@@ -55,8 +56,9 @@ def generate_uniform_splits_for_subcases(idx, tr_samples, val_samples, test_samp
         print(f"Selecting subcase: {subcase}")
         np.random.shuffle(lst)
         train_idx.extend(lst[: tr_samples])
-        val_idx.extend(lst[tr_samples : tr_samples+val_samples])
-        test_idx.extend(lst[tr_samples+val_samples:tr_samples+val_samples+test_samples])
+        val_idx.extend(lst[tr_samples: tr_samples+val_samples])
+        test_idx.extend(
+            lst[tr_samples+val_samples:tr_samples+val_samples+test_samples])
     np.random.shuffle(train_idx)
     np.random.shuffle(val_idx)
     np.random.shuffle(test_idx)
@@ -65,7 +67,8 @@ def generate_uniform_splits_for_subcases(idx, tr_samples, val_samples, test_samp
 
 def get_data_splits(idx, tr_samples=500, val_samples=10, test_samples=10):
 
-    train_idx, val_idx, test_idx = generate_uniform_splits_for_subcases(idx, tr_samples, val_samples, test_samples)
+    train_idx, val_idx, test_idx = generate_uniform_splits_for_subcases(
+        idx, tr_samples, val_samples, test_samples)
     return train_idx, val_idx, test_idx
 
 
@@ -76,6 +79,7 @@ def save_test_idx(idx):
 def load_test_idx(file="test_idx.pt"):
     idx = torch.load(file)
     return idx
+
 
 def edges_to_quads(edge_list):
     # Step 1: Build neighbor map
@@ -100,12 +104,14 @@ def edges_to_quads(edge_list):
     #                         quads.add(quad)
     # return list(quads)
     data = np.array([
-    [0, 2, 6, 7],
-    [2, 0, 5, 4],
-    [1, 2, 4, 8],
-    [2, 1, 3, 6]
+    [7,8,1,3],
+    [3,1,6,5],
+    [2,3,5,9],
+    [3,2,4,7],
     ])
+    data-=1
     return data
+
 
 def convert_egdes_to_quad(quads):
     faces = []
@@ -126,7 +132,7 @@ def convert_egdes_to_quad(quads):
 #     quads = edges_to_quads(edge_list)
 #     faces = convert_egdes_to_quad(quads)
 #     polydata = pv.PolyData(points, faces)
-    
+
 
 #     # polydata.point_data["disp_y"], polydata.point_data["disp_z"] = [
 #     #     data_dict["y"][:, i] for i in range(2)
@@ -146,7 +152,8 @@ def create_vtk_from_graph(data_dict):
 
     # If 2D coords: add X=0 to make it (X, Y, Z)
     if points.shape[1] == 2:
-        points = np.hstack([np.zeros((points.shape[0], 1), dtype=np.float32),points])
+        points = np.hstack(
+            [np.zeros((points.shape[0], 1), dtype=np.float32), points])
 
     edge_list = data_dict["connectivity"]
 
@@ -164,6 +171,25 @@ def create_vtk_from_graph(data_dict):
     polydata["disp_z"] = disp_z
 
     return polydata
+
+# def mse(pred, y):
+#     """
+#     Calculate the Mean Squared Error (MSE).
+
+#     Parameters:
+#     -----------
+#     pred: torch.Tensor
+#         Predicted values.
+#     y: torch.Tensor
+#         Ground truth values.
+
+#     Returns:
+#     --------
+#     error: float
+#         Calculated MSE as a scalar value.
+#     """
+#     error = torch.mean((pred - y) ** 2)  # Element-wise squared difference, then mean
+#     return error.item()*100
 
 
 def mse(pred, y, p=2):
@@ -183,7 +209,8 @@ def mse(pred, y, p=2):
         Calculated relative L2 error norm (percentage) on cpu
     """
 
-    error = torch.mean(torch.norm(pred - y, p=p) / torch.norm(y, p=p)).cpu().numpy()
+    error = torch.mean(torch.norm(pred - y, p=p) /
+                       torch.norm(y, p=p)).cpu().numpy()
     return error * 100
 
 
@@ -262,4 +289,4 @@ def log_cosh(pred, true):
     return log_cosh_loss * 100
 
 
-####### need to change
+# need to change
