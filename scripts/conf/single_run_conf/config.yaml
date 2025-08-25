@@ -31,6 +31,7 @@ num_validation_samples: 150
 num_test_samples: 150
 
 lr: 1e-3
+pinn_weight: 1.0
 
 amp: False
 jit: False

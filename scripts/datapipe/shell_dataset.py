@@ -225,33 +225,42 @@ class ShellDataset(DGLDataset):
     def max_abs_denorm(self, data, max_abs):
         return data * max_abs
 
-    def z_score_norm_node(self):
-        """normalizes node features"""
-        invar_keys = set(
-            [
-                key.replace("_mean", "").replace("_std", "")
-                for key in self.node_stats.keys()
-            ]
-        )
+    def z_score_norm_node(self, keys=["load", "disp_y", "disp_z"]):
+        # """Normalize load, disp_y, disp_z with SPC handling"""
         epsilon = torch.tensor(1e-8, dtype=torch.float32)
 
-        for key in invar_keys:
-            for i in range(len(self.graphs)):
-                self.graphs[i].ndata[key] = (
-                    self.graphs[i].ndata[key] - self.node_stats[key + "_mean"]
-                ) / (self.node_stats[key + "_std"] + epsilon)
+        for g in self.graphs:
+            # --- load ---
+            values = g.ndata["load"]
+            mask = values != 0
+            g.ndata["load"][mask] = (
+                (values[mask] - self.node_stats["load_mean"])
+                / (self.node_stats["load_std"] + epsilon)
+            )
+
+            # --- displacements ---
+            for key in ["disp_y", "disp_z"]:
+                values = g.ndata[key]
+                if "spc" in g.ndata:
+                    mask = g.ndata["spc"] == 0
+                    g.ndata[key][mask] = (
+                        (values[mask] - self.node_stats[key + "_mean"])
+                        / (self.node_stats[key + "_std"] + epsilon)
+                    )
 
         return self.graphs
+
 
     def z_score_norm_edge(self):
-        """normalizes a tensor"""
+        """Normalizes edge features 'x' using edge_stats"""
         epsilon = torch.tensor(1e-8, dtype=torch.float32)
-        for i in range(len(self.graphs)):
-            self.graphs[i].edata["x"] = (
-                self.graphs[i].edata["x"] - self.edge_stats["edge_mean"]
-            ) / self.edge_stats["edge_std"] + epsilon
+        for g in self.graphs:
+            g.edata["x"] = (
+                g.edata["x"] - self.edge_stats["edge_mean"]
+            ) / (self.edge_stats["edge_std"] + epsilon)
 
         return self.graphs
+
 
     @staticmethod
     def z_score_denorm(invar, mu, std):
@@ -364,31 +373,49 @@ class ShellDataset(DGLDataset):
         save_json(stats, "edge_stats.json")
         return stats
 
-    def _get_node_stats_for_zscore(self, keys):
-        stats = {}
-        for key in keys:
-            stats[key + "_mean"] = 0
-            stats[key + "_meansqr"] = 0
+    def _get_node_stats_for_zscore(self, keys=["load", "disp_y", "disp_z"]):
+        stats = {k + "_mean": 0 for k in keys}
+        stats.update({k + "_meansqr": 0 for k in keys})
 
-        for i in range(self.length):
+        for g in self.graphs:
             for key in keys:
-                stats[key + "_mean"] += (
-                    torch.mean(self.graphs[i].ndata[key], dim=0) / self.length
-                )
-                stats[key + "_meansqr"] += (
-                    torch.mean(torch.square(self.graphs[i].ndata[key]), dim=0)
-                    / self.length
-                )
+                values = g.ndata[key]
 
+                if key == "load":
+                    # only one non-zero value per graph
+                    nonzero = values[values != 0]
+                    if len(nonzero) > 0:
+                        mean_val = nonzero.mean()
+                        mean_sqr = (nonzero ** 2).mean()
+                    else:
+                        continue
+
+                elif key in ["disp_y", "disp_z"] and "spc" in g.ndata:
+                    # only unconstrained nodes (spc == 0)
+                    mask = g.ndata["spc"] == 0
+                    valid_vals = values[mask]
+                    if len(valid_vals) > 0:
+                        mean_val = valid_vals.mean()
+                        mean_sqr = (valid_vals ** 2).mean()
+                    else:
+                        continue
+
+                else:
+                    continue  # should not happen
+
+                stats[key + "_mean"] += mean_val / self.length
+                stats[key + "_meansqr"] += mean_sqr / self.length
+
+        # finalize std
         for key in keys:
             stats[key + "_std"] = torch.sqrt(
-                stats[key + "_meansqr"] - torch.square(stats[key + "_mean"])
+                stats[key + "_meansqr"] - stats[key + "_mean"] ** 2
             )
             stats.pop(key + "_meansqr")
 
-        # save to file
         save_json(stats, "node_stats.json")
         return stats
+
 
     def _create_dgl_graph(self, data_i, to_bidirected=True, dtype=torch.int32):
         

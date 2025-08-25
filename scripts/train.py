@@ -57,6 +57,11 @@ loss_mapping = {
     "L1Loss": "torch.nn",
 }
 
+def enforce_boundary_conditions(pred, graph):
+    spc = graph.ndata["spc"]
+    pred = pred * (1 - spc) 
+    return pred
+
 class MGNTrainer:
     def __init__(self, cfg: DictConfig, dist, rank_zero_logger, main_loss_fn, main_loss_module):
         self.dist = dist
@@ -186,12 +191,28 @@ class MGNTrainer:
         self.scheduler.step()
         return loss
 
+    
     def forward(self, graph):
-        # forward pass
+        """
+        Forward pass with data loss and PINN (physics-informed) loss.
+        - Enforces boundary conditions on predictions.
+        - Computes data loss (fit to labeled data).
+        - Computes physics loss (PINN loss, e.g., PDE residuals).
+        - Combines both losses with a configurable weight.
+        """
         with autocast(enabled=self.amp):
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
-            loss = self.criterion(pred, graph.ndata["y"])
-            return loss
+            pred = enforce_boundary_conditions(pred, graph)
+            data_loss = self.criterion(pred, graph.ndata["y"])
+            # Compute PINN loss (physics residuals)
+            physics_loss = self.pinn_loss(pred, graph)
+            # Use cfg.pinn_weight if present, else default to 1.0
+            pinn_weight = getattr(self, 'cfg', None)
+            if pinn_weight is not None and hasattr(self.cfg, 'pinn_weight'):
+                total_loss = data_loss + self.cfg.pinn_weight * physics_loss
+            else:
+                total_loss = data_loss + 1.0 * physics_loss
+            return total_loss
 
     def backward(self, loss):
         # backward pass
@@ -268,6 +289,16 @@ class MGNTrainer:
                 f"{metric}_val_disp_z_error (%)": errors["disp_z"],
             }
         )
+
+    def pinn_loss(self, pred, graph):
+        """
+        Placeholder for Physics-Informed Neural Network (PINN) loss.
+        Replace the residual computation below with your physics equation residuals.
+        Example: For a PDE, compute the residual using pred and graph.ndata, then return its MSE.
+        """
+        # Example: residual = ... (your physics residual here)
+        residual = torch.zeros_like(pred)  # TODO: Replace with real residual
+        return torch.mean(residual ** 2)
 
 @hydra.main(config_path="conf/single_run_conf", config_name="config")
 def main(cfg: DictConfig) -> None:
