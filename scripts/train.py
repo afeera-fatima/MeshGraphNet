@@ -291,14 +291,15 @@ class MGNTrainer:
         )
 
     def pinn_loss(self, pred, graph):
-        """
-        Placeholder for Physics-Informed Neural Network (PINN) loss.
-        Replace the residual computation below with your physics equation residuals.
-        Example: For a PDE, compute the residual using pred and graph.ndata, then return its MSE.
-        """
-        # Example: residual = ... (your physics residual here)
-        residual = torch.zeros_like(pred)  # TODO: Replace with real residual
-        return torch.mean(residual ** 2)
+        u = pred                     # predicted displacements
+        spc = graph.ndata["spc"]     # boundary conditions (1=fixed, 0=free)
+
+
+        # ----- Boundary condition residual -----
+        r_bc = u * spc  # fixed nodes must remain 0
+        bc_loss = torch.mean(r_bc**2)
+
+        return bc_loss
 
 @hydra.main(config_path="conf/single_run_conf", config_name="config")
 def main(cfg: DictConfig) -> None:

@@ -24,7 +24,7 @@ normalize_keys: ["disp_y", "disp_z", "load"]
 
 aggregation: "sum"
 batch_size: 1
-epochs: 5
+epochs: 500
 
 num_training_samples: 1200
 num_validation_samples: 150

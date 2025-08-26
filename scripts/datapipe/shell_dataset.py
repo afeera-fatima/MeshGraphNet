@@ -232,17 +232,18 @@ class ShellDataset(DGLDataset):
         for g in self.graphs:
             # --- load ---
             values = g.ndata["load"]
-            mask = values != 0
+            mask = (values != 0).all(dim=1)  # only nodes with non-zero load
             g.ndata["load"][mask] = (
                 (values[mask] - self.node_stats["load_mean"])
                 / (self.node_stats["load_std"] + epsilon)
+
             )
 
             # --- displacements ---
             for key in ["disp_y", "disp_z"]:
                 values = g.ndata[key]
                 if "spc" in g.ndata:
-                    mask = g.ndata["spc"] == 0
+                    mask = (g.ndata["spc"] == 0).all(dim=1)  # only unconstrained nodes (spc == 0)
                     g.ndata[key][mask] = (
                         (values[mask] - self.node_stats[key + "_mean"])
                         / (self.node_stats[key + "_std"] + epsilon)
@@ -392,7 +393,8 @@ class ShellDataset(DGLDataset):
 
                 elif key in ["disp_y", "disp_z"] and "spc" in g.ndata:
                     # only unconstrained nodes (spc == 0)
-                    mask = g.ndata["spc"] == 0
+                    mask = (g.ndata["spc"] == 0).all(dim=1)
+
                     valid_vals = values[mask]
                     if len(valid_vals) > 0:
                         mean_val = valid_vals.mean()
