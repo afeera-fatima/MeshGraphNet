@@ -58,10 +58,9 @@ loss_mapping = {
 }
 
 def enforce_boundary_conditions(pred, graph):
-    spc = graph.ndata["spc"]
-    pred = pred * (1 - spc) 
-    return pred
-
+    spc = graph.ndata["spc"]  # Boundary condition mask (1=fixed, 0=free)
+    boundary_residual = pred * spc  # Fixed nodes should have zero displacement
+    return boundary_residual
 class MGNTrainer:
     def __init__(self, cfg: DictConfig, dist, rank_zero_logger, main_loss_fn, main_loss_module):
         self.dist = dist
@@ -202,16 +201,22 @@ class MGNTrainer:
         """
         with autocast(enabled=self.amp):
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
-            pred = enforce_boundary_conditions(pred, graph)
+
+            # Compute data loss
             data_loss = self.criterion(pred, graph.ndata["y"])
-            # Compute PINN loss (physics residuals)
+
+            # Compute boundary condition penalty
+            boundary_residual = enforce_boundary_conditions(pred, graph)
+            boundary_loss = torch.mean(boundary_residual**2)
+
+            # Compute PINN loss (e.g., physics residuals)
             physics_loss = self.pinn_loss(pred, graph)
-            # Use cfg.pinn_weight if present, else default to 1.0
-            pinn_weight = getattr(self, 'cfg', None)
-            if pinn_weight is not None and hasattr(self.cfg, 'pinn_weight'):
-                total_loss = data_loss + self.cfg.pinn_weight * physics_loss
-            else:
-                total_loss = data_loss + 1.0 * physics_loss
+
+            # Combine losses
+            pinn_weight = getattr(self.cfg, "pinn_weight", 1.0)
+            boundary_weight = getattr(self.cfg, "boundary_weight", 1.0)
+            total_loss = data_loss + pinn_weight * physics_loss + boundary_weight * boundary_loss
+
             return total_loss
 
     def backward(self, loss):
