@@ -56,11 +56,90 @@ loss_mapping = {
     "MultiComponentLossWithUncertainty": "custom_loss",
     "L1Loss": "torch.nn",
 }
+import dgl.function as fn
+# ...existing code...
 
-def enforce_boundary_conditions(pred, graph):
-    spc = graph.ndata["spc"]  # Boundary condition mask (1=fixed, 0=free)
-    boundary_residual = pred * spc  # Fixed nodes should have zero displacement
-    return boundary_residual
+def equilibrium_loss(pred, graph, k_mode="inv_len", eps=1e-6):
+    """
+    Enforce Newton's second law (equilibrium): sum internal forces + external loads = 0 on free DOFs.
+    Internal forces modeled as spring forces: f_ij = k_ij (u_i - u_j).
+    """
+    g = graph.local_var()
+    g = g.to(pred.device)
+    src, dst = g.edges()
+    pos = g.ndata["pos"].to(pred.device).float()
+    u = pred
+
+    # Edge stiffness (k_ij)
+    elen = torch.linalg.norm(pos[src] - pos[dst], dim=-1, keepdim=True).clamp_min(eps).type_as(u)
+    if k_mode == "inv_len":
+        kij = 1.0 / elen  # k proportional to 1/length
+    elif k_mode == "inv_len_sq":
+        kij = 1.0 / (elen * elen)  # k proportional to 1/length^2
+    else:
+        kij = torch.ones_like(elen)
+
+    # Edge force (directed from src to dst)
+    f_e = (u[src] - u[dst]) * kij  # f = k * u
+
+    # Accumulate net force at nodes (divergence)
+    g.edata["f_e"] = f_e
+    g.update_all(fn.copy_e("f_e", "m"), fn.sum("m", "f_sum"))
+    f_int = g.ndata["f_sum"]  # (N, C)
+
+    # External load (align shape)
+    load = graph.ndata.get("load", torch.zeros_like(u)).to(pred.device).type_as(u)
+    if load.dim() == 1:
+        load = load.unsqueeze(-1)
+    if load.size(-1) == 1 and u.dim() == 2:
+        load = load.expand(-1, u.size(-1))
+    if load.shape != u.shape and load.size(0) == u.size(0) and load.size(-1) >= u.size(-1):
+        load = load[:, :u.size(-1)]
+
+    residual = f_int + load  # Equilibrium: f_int + load = 0
+
+    # Penalize only free DOFs (where spc=0)
+    spc = graph.ndata.get("spc", None)
+    if spc is None:
+        mask = torch.ones_like(u)
+    else:
+        mask = spc.to(pred.device).type_as(u)
+        if mask.dim() == 1:
+            mask = mask.unsqueeze(-1)
+        if mask.size(-1) == 1 and u.dim() == 2:
+            mask = mask.expand(-1, u.size(-1))
+        if mask.shape != u.shape and mask.size(0) == u.size(0) and mask.size(-1) >= u.size(-1):
+            mask = mask[:, :u.size(-1)]
+        mask = 1.0 - mask  # Free DOFs: 1, Fixed: 0
+
+    denom = mask.mean().clamp(min=1e-8)
+    return (residual.pow(2) * mask).mean() / denom
+
+# ...existing code...
+def boundary_condition_loss(pred, spc):
+    """
+    spc: 1 = fixed DOF, 0 = free. Penalize nonzero pred on fixed DOFs.
+    Handles dtype/device/shape safely.
+    """
+    if not isinstance(spc, torch.Tensor):
+        spc = torch.as_tensor(spc, dtype=pred.dtype, device=pred.device)
+    else:
+        spc = spc.to(device=pred.device, dtype=pred.dtype)
+
+    # shape align to (N, C)
+    if spc.dim() == 1:
+        spc = spc.unsqueeze(-1)
+    if spc.size(-1) == 1 and pred.dim() == 2:
+        spc = spc.expand(-1, pred.size(-1))
+    if spc.shape != pred.shape:
+        if spc.size(0) == pred.size(0) and spc.size(-1) >= pred.size(-1):
+            spc = spc[:, : pred.size(-1)]
+        else:
+            raise RuntimeError(f"SPC shape {tuple(spc.shape)} incompatible with pred shape {tuple(pred.shape)}")
+
+    denom = spc.mean().clamp(min=1e-8)
+    return (pred.pow(2) * spc).mean() / denom
+
 class MGNTrainer:
     def __init__(self, cfg: DictConfig, dist, rank_zero_logger, main_loss_fn, main_loss_module):
         self.dist = dist
@@ -180,42 +259,33 @@ class MGNTrainer:
             scaler=self.scaler,
             device=dist.device,
         )
-        self.metrics = ["mse", "rmse", "mae", "mare"]
+        # self.metrics = ["mse", "rmse", "mae", "mare"]
+        self.metrics = ["mse"]
 
-    def train(self, graph):
+
+    def train(self, graph,cfg):
         graph = graph.to(self.dist.device)
         self.optimizer.zero_grad()
-        loss = self.forward(graph)
+        loss = self.forward(graph,cfg)
         self.backward(loss)
         self.scheduler.step()
         return loss
 
     
-    def forward(self, graph):
-        """
-        Forward pass with data loss and PINN (physics-informed) loss.
-        - Enforces boundary conditions on predictions.
-        - Computes data loss (fit to labeled data).
-        - Computes physics loss (PINN loss, e.g., PDE residuals).
-        - Combines both losses with a configurable weight.
-        """
+    # ...existing code...
+    def forward(self, graph, cfg):
         with autocast(enabled=self.amp):
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
 
-            # Compute data loss
             data_loss = self.criterion(pred, graph.ndata["y"])
+            boundary_loss = boundary_condition_loss(pred, graph.ndata["spc"])
 
-            # Compute boundary condition penalty
-            boundary_residual = enforce_boundary_conditions(pred, graph)
-            boundary_loss = torch.mean(boundary_residual**2)
+            # Add physics loss for free nodes (e.g., equilibrium)
+            physics_loss = equilibrium_loss(pred, graph)  # Penalizes on free DOFs only
 
-            # Compute PINN loss (e.g., physics residuals)
-            physics_loss = self.pinn_loss(pred, graph)
-
-            # Combine losses
-            pinn_weight = getattr(self.cfg, "pinn_weight", 1.0)
-            boundary_weight = getattr(self.cfg, "boundary_weight", 1.0)
-            total_loss = data_loss + pinn_weight * physics_loss + boundary_weight * boundary_loss
+            boundary_weight = getattr(cfg, "boundary_weight", 1.0)
+            physics_weight = getattr(cfg, "physics_weight", 1.0)
+            total_loss = data_loss + boundary_weight * boundary_loss + physics_weight * physics_loss
 
             return total_loss
 
@@ -348,7 +418,7 @@ def main(cfg: DictConfig) -> None:
         rank_zero_logger.info(f"epoch: {epoch}")
 
         for i, graph in enumerate(trainer.dataloader):
-            loss = trainer.train(graph)
+            loss = trainer.train(graph,cfg)
             # print(f"Loss before detach: {loss.item()}") 
             loss = loss.detach().cpu().numpy()
             loss_agg += loss

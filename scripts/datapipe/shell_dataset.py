@@ -1,5 +1,6 @@
 """"""
 
+import h5py
 import os
 import re
 import torch
@@ -20,15 +21,16 @@ from physicsnemo.datapipes.gnn.utils import load_json
 #         data = json.load(f)
 #     return convert_to_tensor(data)
 
+
 def save_json(obj, path):
     def convert(o):
-        if isinstance(o,torch.Tensor):
+        if isinstance(o, torch.Tensor):
             if o.ndim == 0:
                 return o.item()
             return o.tolist()
         return o
-    
-    cleaned={k:convert(v) for k,v in obj.items()}
+
+    cleaned = {k: convert(v) for k, v in obj.items()}
     with open(path, "w") as f:
         json.dump(cleaned, f, indent=2)
 
@@ -48,7 +50,7 @@ except ImportError:
         "Dataset requires the vtk and pyvista libraries. Install with "
         + "pip install vtk pyvista"
     )
-import h5py
+
 
 class Hdf5Dataset:
     """
@@ -126,7 +128,8 @@ class ShellDataset(DGLDataset):
 
         if normalization == "z_score":
             if split == "train":
-                self.node_stats = self._get_node_stats_for_zscore(keys=self.normalize_keys)
+                self.node_stats = self._get_node_stats_for_zscore(
+                    keys=self.normalize_keys)
                 self.edge_stats = self._get_edge_stats_for_zscore()
             else:
                 self.node_stats = load_json("node_stats.json")
@@ -142,13 +145,16 @@ class ShellDataset(DGLDataset):
         elif normalization == "custom":
             if split == "train":
                 self.edge_stats = self._get_edge_stats_for_zscore()
-                self.node_stats = self._get_node_stats_for_robust_scaler(normalize_keys[:3]) # displaccements here
-                self.node_stats |= self._get_node_stats_minmax(normalize_keys[3:]) # thickness and load here
+                self.node_stats = self._get_node_stats_for_robust_scaler(
+                    normalize_keys[:3])  # displaccements here
+                self.node_stats |= self._get_node_stats_minmax(
+                    normalize_keys[3:])  # thickness and load here
             else:
                 self.edge_stats = load_json("edge_stats.json")
                 self.node_stats = load_json("node_stats_robust_scaler.json")
-                self.node_stats |= load_json("node_stats_minmax.json") # works like .update() for dicts
-            
+                # works like .update() for dicts
+                self.node_stats |= load_json("node_stats_minmax.json")
+
             self.graphs = self.min_max_norm_node()
             self.graphs = self.robust_scaler_node_disp()
             self.graphs = self.z_score_norm_edge()
@@ -218,39 +224,31 @@ class ShellDataset(DGLDataset):
 
             # Apply Max-Abs normalization to edge features
             max_abs_edge = torch.max(torch.abs(self.graphs[i].edata["x"]))
-            self.graphs[i].edata["x"] = self.graphs[i].edata["x"] / max_abs_edge
+            self.graphs[i].edata["x"] = self.graphs[i].edata["x"] / \
+                max_abs_edge
 
         return self.graphs
 
     def max_abs_denorm(self, data, max_abs):
         return data * max_abs
 
-    def z_score_norm_node(self, keys=["load", "disp_y", "disp_z"]):
-        # """Normalize load, disp_y, disp_z with SPC handling"""
+    def z_score_norm_node(self):
+        """normalizes node features"""
+        invar_keys = set(
+            [
+                key.replace("_mean", "").replace("_std", "")
+                for key in self.node_stats.keys()
+            ]
+        )
         epsilon = torch.tensor(1e-8, dtype=torch.float32)
 
-        for g in self.graphs:
-            # --- load ---
-            values = g.ndata["load"]
-            mask = (values != 0).all(dim=1)  # only nodes with non-zero load
-            g.ndata["load"][mask] = (
-                (values[mask] - self.node_stats["load_mean"])
-                / (self.node_stats["load_std"] + epsilon)
-
-            )
-
-            # --- displacements ---
-            for key in ["disp_y", "disp_z"]:
-                values = g.ndata[key]
-                if "spc" in g.ndata:
-                    mask = (g.ndata["spc"] == 0).all(dim=1)  # only unconstrained nodes (spc == 0)
-                    g.ndata[key][mask] = (
-                        (values[mask] - self.node_stats[key + "_mean"])
-                        / (self.node_stats[key + "_std"] + epsilon)
-                    )
+        for key in invar_keys:
+            for i in range(len(self.graphs)):
+                self.graphs[i].ndata[key] = (
+                    self.graphs[i].ndata[key] - self.node_stats[key + "_mean"]
+                ) / (self.node_stats[key + "_std"] + epsilon)
 
         return self.graphs
-
 
     def z_score_norm_edge(self):
         """Normalizes edge features 'x' using edge_stats"""
@@ -262,13 +260,12 @@ class ShellDataset(DGLDataset):
 
         return self.graphs
 
-
     @staticmethod
     def z_score_denorm(invar, mu, std):
         """denormalizes a tensor"""
         denormalized_invar = invar * std + mu
         return denormalized_invar
-    
+
     def _get_node_stats_minmax(self, keys):
         stats = {}
 
@@ -287,8 +284,8 @@ class ShellDataset(DGLDataset):
         # save to file
         save_json(stats, "node_stats_minmax.json")
         return stats
-    
-    def min_max_norm_node(self, feature_range=(0,1), epsilon=1e-8):
+
+    def min_max_norm_node(self, feature_range=(0, 1), epsilon=1e-8):
         """Applies Min-Max Normalization to node features"""
         a, b = feature_range
         for key in self.normalize_keys:
@@ -297,15 +294,17 @@ class ShellDataset(DGLDataset):
 
             for i in range(len(self.graphs)):
                 self.graphs[i].ndata[key] = a + \
-                ((self.graphs[i].ndata[key] - min_val)  / (max_val - min_val + epsilon)) \
-                * (b - a)
+                    ((self.graphs[i].ndata[key] - min_val) / (max_val - min_val + epsilon)) \
+                    * (b - a)
 
         return self.graphs
 
     @staticmethod
-    def min_max_denorm(data_arr, old_min,  old_max, feature_range=(0,1), epsilon=1e-8):
-        new_min,new_max = feature_range
-        denormalized = old_min + (old_max - old_min) * ((data_arr - new_min) / (new_max - new_min + epsilon))
+    def min_max_denorm(data_arr, old_min,  old_max, feature_range=(0, 1), epsilon=1e-8):
+        new_min, new_max = feature_range
+        denormalized = old_min + \
+            (old_max - old_min) * \
+            ((data_arr - new_min) / (new_max - new_min + epsilon))
         return denormalized
 
     def _get_node_stats_for_robust_scaler(self, keys):
@@ -328,7 +327,7 @@ class ShellDataset(DGLDataset):
         # save to file
         save_json(stats, "node_stats_robust_scaler.json")
         return stats
-    
+
     def robust_scaler_node_disp(self):
         """Applies RobustScaler to node features"""
         invar_keys = set(
@@ -342,7 +341,8 @@ class ShellDataset(DGLDataset):
         for key in invar_keys:
             for i in range(len(self.graphs)):
                 self.graphs[i].ndata[key] = (
-                    self.graphs[i].ndata[key] - self.node_stats[key + "_median"]
+                    self.graphs[i].ndata[key] -
+                    self.node_stats[key + "_median"]
                 ) / (self.node_stats[key + "_iqr"])
 
         return self.graphs
@@ -363,7 +363,8 @@ class ShellDataset(DGLDataset):
                 torch.mean(self.graphs[i].edata["x"], dim=0) / self.length
             )
             stats["edge_meansqr"] += (
-                torch.mean(torch.square(self.graphs[i].edata["x"]), dim=0) / self.length
+                torch.mean(torch.square(
+                    self.graphs[i].edata["x"]), dim=0) / self.length
             )
         stats["edge_std"] = torch.sqrt(
             stats["edge_meansqr"] - torch.square(stats["edge_mean"])
@@ -374,53 +375,34 @@ class ShellDataset(DGLDataset):
         save_json(stats, "edge_stats.json")
         return stats
 
-    def _get_node_stats_for_zscore(self, keys=["load", "disp_y", "disp_z"]):
-        stats = {k + "_mean": 0 for k in keys}
-        stats.update({k + "_meansqr": 0 for k in keys})
+    def _get_node_stats_for_zscore(self, keys):
+        stats = {}
+        for key in keys:
+            stats[key + "_mean"] = 0
+            stats[key + "_meansqr"] = 0
 
-        for g in self.graphs:
+        for i in range(self.length):
             for key in keys:
-                values = g.ndata[key]
+                stats[key + "_mean"] += (
+                    torch.mean(self.graphs[i].ndata[key], dim=0) / self.length
+                )
+                stats[key + "_meansqr"] += (
+                    torch.mean(torch.square(self.graphs[i].ndata[key]), dim=0)
+                    / self.length
+                )
 
-                if key == "load":
-                    # only one non-zero value per graph
-                    nonzero = values[values != 0]
-                    if len(nonzero) > 0:
-                        mean_val = nonzero.mean()
-                        mean_sqr = (nonzero ** 2).mean()
-                    else:
-                        continue
-
-                elif key in ["disp_y", "disp_z"] and "spc" in g.ndata:
-                    # only unconstrained nodes (spc == 0)
-                    mask = (g.ndata["spc"] == 0).all(dim=1)
-
-                    valid_vals = values[mask]
-                    if len(valid_vals) > 0:
-                        mean_val = valid_vals.mean()
-                        mean_sqr = (valid_vals ** 2).mean()
-                    else:
-                        continue
-
-                else:
-                    continue  # should not happen
-
-                stats[key + "_mean"] += mean_val / self.length
-                stats[key + "_meansqr"] += mean_sqr / self.length
-
-        # finalize std
         for key in keys:
             stats[key + "_std"] = torch.sqrt(
-                stats[key + "_meansqr"] - stats[key + "_mean"] ** 2
+                stats[key + "_meansqr"] - torch.square(stats[key + "_mean"])
             )
             stats.pop(key + "_meansqr")
 
+        # save to file
         save_json(stats, "node_stats.json")
         return stats
 
-
     def _create_dgl_graph(self, data_i, to_bidirected=True, dtype=torch.int32):
-        
+
         # print(f"connectivity shape:{data_i['connectivity'].shape}")
         edge_list = data_i["connectivity"].tolist()
         graph = dgl.graph(edge_list, idtype=dtype)
@@ -436,13 +418,15 @@ class ShellDataset(DGLDataset):
         graph.ndata["load"] = torch.tensor(data_i["load"], dtype=torch.float32)
 
         for i, arr_name in enumerate(self.output_keys):
-            graph.ndata[arr_name] = torch.tensor(data_i["y"][:, i], dtype=torch.float32)
+            graph.ndata[arr_name] = torch.tensor(
+                data_i["y"][:, i], dtype=torch.float32)
 
         pos = graph.ndata["pos"]
         row, col = graph.edges()
         disp = torch.tensor(pos[row.long()] - pos[col.long()])
         disp_norm = torch.linalg.norm(disp, dim=-1, keepdim=True)
 
+        # already did this while preprocessing
         # # Adjust etypes for bidirected graph
         # etypes = torch.tensor(data_i["etypes"], dtype=torch.float32)
         # if to_bidirected:

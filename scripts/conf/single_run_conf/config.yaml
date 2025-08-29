@@ -22,9 +22,14 @@ invar_keys: ["pos", "spc", "load"]
 outvar_keys: ["y"]
 normalize_keys: ["disp_y", "disp_z", "load"]
 
+
+boundary_weight: 0.5
+physics_weight: 1.0
+hookes_k_mode: "inv_len"  # Stiffness mode: "inv_len" or "inv_len_sq"
+
 aggregation: "sum"
-batch_size: 1
-epochs: 500
+batch_size: 32
+epochs: 1000
 
 num_training_samples: 1200
 num_validation_samples: 150
@@ -32,7 +37,7 @@ num_test_samples: 150
 
 lr: 1e-3
 pinn_weight: 1.0
-
+boundary_weight : 0.5
 amp: False
 jit: False
 wandb_mode: "online"
